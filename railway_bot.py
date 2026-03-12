@@ -19,10 +19,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration - Load after delay to let Railway set variables
+import time as time_module
+time_module.sleep(1)
+
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID')
 POSTED_JOBS_FILE = "posted_jobs.json"
+
+# Log what we got
+logger.info(f"Bot Token loaded: {'Yes' if TELEGRAM_BOT_TOKEN else 'NO'}")
+logger.info(f"Channel ID loaded: {'Yes' if TELEGRAM_CHANNEL_ID else 'NO'}")
 
 # Browser headers to avoid blocks
 HEADERS = {
@@ -282,12 +289,6 @@ async def check_and_post_jobs():
     logger.info("🤖 GOVERNMENT JOB BOT - 53 WEBSITES SCANNER (RAILWAY)")
     logger.info("=" * 70)
     
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
-        logger.error("❌ Missing Telegram credentials")
-        return
-    
-    logger.info("✓ Credentials verified")
-    
     posted_jobs = load_posted_jobs()
     logger.info(f"✓ Cache: {len(posted_jobs)} jobs already posted")
     
@@ -340,3 +341,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
