@@ -25,23 +25,50 @@ def save_posted(link):
     with open(POSTED_FILE, "a") as f:
         f.write(link + "\n")
 
-def get_job_details(url):
+def get_job_details(url, entry):
     details = {}
     try:
+        # Try to get last date from RSS description first
+        summary = entry.get("summary", "") or entry.get("description", "")
+        if summary:
+            soup_rss = BeautifulSoup(summary, "lxml")
+            rss_text = soup_rss.get_text(separator=" ")
+            import re
+            date_match = re.search(
+                r'(last date[:\s]+[\w\s,]+\d{4}|apply before[:\s]+[\w\s,]+\d{4})',
+                rss_text, re.IGNORECASE
+            )
+            if date_match:
+                details["last_date"] = date_match.group(0)[:60]
+
+        # Scrape page for other details
         res = requests.get(url, timeout=10)
         soup = BeautifulSoup(res.text, "lxml")
         text = soup.get_text(separator="\n")
         lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+        skip_words = ["hot jobs", "sarkari", "recruitment", "naukri",
+                      "javascript", "enabled", "click here", "www.", "http"]
+
+        def is_valid(val):
+            v = val.lower()
+            return not any(s in v for s in skip_words) and len(val) > 2 and len(val) < 80
+
         for i, line in enumerate(lines):
             ll = line.lower()
-            if ("vacancy" in ll or "post" in ll) and i+1 < len(lines):
-                details.setdefault("vacancy", lines[i+1][:80])
-            if ("salary" in ll or "pay scale" in ll) and i+1 < len(lines):
-                details.setdefault("salary", lines[i+1][:80])
-            if ("eligibility" in ll or "qualification" in ll) and i+1 < len(lines):
-                details.setdefault("eligibility", lines[i+1][:80])
-            if ("last date" in ll or "closing date" in ll) and i+1 < len(lines):
-                details.setdefault("last_date", lines[i+1][:80])
+            next_line = lines[i+1] if i+1 < len(lines) else ""
+            if "total post" in ll or "total vacancy" in ll or "no. of post" in ll:
+                if is_valid(next_line):
+                    details.setdefault("vacancy", next_line)
+            if "pay scale" in ll or "pay matrix" in ll or "grade pay" in ll:
+                if is_valid(next_line):
+                    details.setdefault("salary", next_line)
+            if "qualification" in ll or "educational" in ll:
+                if is_valid(next_line):
+                    details.setdefault("eligibility", next_line)
+            if "last date" in ll and "last date" not in details.get("last_date","").lower():
+                if is_valid(next_line):
+                    details.setdefault("last_date", next_line)
     except Exception as e:
         logger.warning(f"Could not fetch details: {e}")
     return details
