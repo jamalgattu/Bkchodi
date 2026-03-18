@@ -2,9 +2,10 @@ import feedparser
 import requests
 import os
 import logging
+import asyncio
 from bs4 import BeautifulSoup
 from telegram import Bot
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,17 +32,16 @@ def get_job_details(url):
         soup = BeautifulSoup(res.text, "lxml")
         text = soup.get_text(separator="\n")
         lines = [l.strip() for l in text.splitlines() if l.strip()]
-
         for i, line in enumerate(lines):
             ll = line.lower()
-            if "vacancy" in ll or "post" in ll and i+1 < len(lines):
-                details["vacancy"] = lines[i+1][:80]
-            if "salary" in ll or "pay scale" in ll and i+1 < len(lines):
-                details["salary"] = lines[i+1][:80]
-            if "eligibility" in ll or "qualification" in ll and i+1 < len(lines):
-                details["eligibility"] = lines[i+1][:80]
-            if "last date" in ll or "closing date" in ll and i+1 < len(lines):
-                details["last_date"] = lines[i+1][:80]
+            if ("vacancy" in ll or "post" in ll) and i+1 < len(lines):
+                details.setdefault("vacancy", lines[i+1][:80])
+            if ("salary" in ll or "pay scale" in ll) and i+1 < len(lines):
+                details.setdefault("salary", lines[i+1][:80])
+            if ("eligibility" in ll or "qualification" in ll) and i+1 < len(lines):
+                details.setdefault("eligibility", lines[i+1][:80])
+            if ("last date" in ll or "closing date" in ll) and i+1 < len(lines):
+                details.setdefault("last_date", lines[i+1][:80])
     except Exception as e:
         logger.warning(f"Could not fetch details: {e}")
     return details
@@ -61,26 +61,23 @@ def format_message(title, link, date, details):
     msg += f"🔗 [Apply Here]({link})"
     return msg
 
-def check_and_post():
+async def check_and_post():
     logger.info("Checking for new jobs...")
     bot = Bot(token=BOT_TOKEN)
     posted = load_posted()
     feed = feedparser.parse(FEED_URL)
-
     new_jobs = 0
+
     for entry in feed.entries[:10]:
         link = entry.get("link", "")
         title = entry.get("title", "No Title")
         date = entry.get("published", "")
-
         if link in posted:
             continue
-
         details = get_job_details(link)
         message = format_message(title, link, date, details)
-
         try:
-            bot.send_message(
+            await bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=message,
                 parse_mode="Markdown",
@@ -95,9 +92,14 @@ def check_and_post():
     if new_jobs == 0:
         logger.info("No new jobs found this hour.")
 
-scheduler = BlockingScheduler()
-scheduler.add_job(check_and_post, "interval", hours=1)
+async def main():
+    logger.info("Bot started! Running first check now...")
+    await check_and_post()
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(check_and_post, "interval", hours=1)
+    scheduler.start()
+    while True:
+        await asyncio.sleep(3600)
 
-logger.info("Bot started! Running first check now...")
-check_and_post()
-scheduler.start()
+if __name__ == "__main__":
+    asyncio.run(main())
