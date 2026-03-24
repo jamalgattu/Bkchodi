@@ -101,7 +101,7 @@ async def check_and_post():
         date = entry.get("published", "")
         if link in posted:
             continue
-        details = get_job_details(link)
+        details = get_job_details(link, entry)
         message = format_message(title, link, date, details)
         try:
             await bot.send_message(
